@@ -16,7 +16,7 @@ async function fetchPageData(page, id) {
         await page.waitForSelector("#aawp .flex-1 .container button", {
           timeout: 10000,
         });
-        await page.click("#aawp .flex-1 .container .container button");
+        await page.click("#aawp .flex-1 .container button");
         console.log(`Ad clicked for ID ${id}`);
       } catch (adError) {
         console.log(`No ad found or ad could not be closed for ID ${id}`);
