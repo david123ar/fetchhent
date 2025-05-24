@@ -9,7 +9,7 @@ let db;
 async function connectToDb() {
   if (!db) {
     await client.connect();
-    db = client.db('myDatabase'); // Replace with your database name
+    db = client.db('mydatabase'); // Replace with your database name
   }
   return db;
 }
