@@ -4,10 +4,8 @@ const { addOrUpdateDocument, getDocument } = require("../src/services/dataServic
 
 async function fetchPageData(page, id, pageNumber, index, total) {
   let retries = 3;
-
   while (retries > 0) {
     try {
-      /* ➜  EARLY‑EXIT if banner already stored */
       const existing = await getDocument("hentai", id);
       if (existing?.banner) {
         console.log(`⏭️ Skipping ID ${id} — banner already exists`);
@@ -16,32 +14,29 @@ async function fetchPageData(page, id, pageNumber, index, total) {
 
       console.log(`🔢 Processing ID ${index + 1}/${total} on page ${pageNumber} → ${id}`);
 
+      await page.waitForTimeout(500); // Prevent "main frame too early"
       await page.goto(`https://hentai.tv/hentai${id}`, {
         waitUntil: "networkidle2",
         timeout: 180000,
       });
 
-      /* Safe ad‑button click */
       try {
-        const adButton = await page.$("#aawp .flex-1 .container button");
-        if (adButton) {
-          console.log(`📢 Attempting ad click for ID ${id}`);
-          await Promise.all([
-            adButton.click().catch(() => {}),
-            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 10000 }).catch(() => {})
-          ]);
+        const adBtn = await page.$("#aawp .flex-1 .container button");
+        if (adBtn) {
+          await adBtn.click();
           await page.waitForTimeout(2000);
+          console.log(`📢 Ad clicked for ID ${id}`);
+        } else {
+          console.log(`🚫 No ad or click failed for ID ${id}`);
         }
       } catch {
-        console.log(`🚫 Ad click failed or no ad for ID ${id}`);
+        console.log(`🚫 No ad or click failed for ID ${id}`);
       }
 
-      await page.waitForSelector("#aawp", { visible: true });
+      await page.waitForSelector("#aawp", { visible: true, timeout: 15000 });
 
-      /* Page extraction */
-      let data;
-      try {
-        data = await page.evaluate(() => ({
+      const data = await page.evaluate(() => {
+        return {
           url: document.querySelector("#aawp iframe")?.src || "",
           title: document.querySelector("#aawp .flex-1 .container .border-b h1")?.innerText.trim() || "",
           views: document.querySelector("#aawp .flex-1 .container .grid .border-b p")?.innerText.trim() || "",
@@ -56,25 +51,22 @@ async function fetchPageData(page, id, pageNumber, index, total) {
             alternateTitle: document.querySelector("#aawp .flex-1 .container .flex aside:last-child div h2 span")?.innerText.trim() || "",
           },
           moreInfo: {
-            tags: Array.from(document.querySelectorAll("#aawp .flex-1 .container .rounded .btn")).map(el => el.innerText.trim()),
+            tags: Array.from(document.querySelectorAll("#aawp .flex-1 .container .rounded .btn")).map((el) => el.innerText.trim()),
             descripOne: document.querySelector("#aawp .flex-1 .container .rounded .prose p:first-child")?.innerText.trim() || "",
             descripTwo: document.querySelector("#aawp .flex-1 .container .rounded .prose p:last-child")?.innerText.trim() || "",
           },
-        }));
-      } catch (evalErr) {
-        console.log(`❌ Evaluation failed for ID ${id}: ${evalErr.message}`);
-        return;
-      }
+        };
+      });
 
       await addOrUpdateDocument("hentai", id, data);
       console.log(`✅ Data updated for ID ${id}`);
       return;
-    } catch (err) {
+    } catch (error) {
       retries--;
-      console.error(`❌ Error for ID ${id}: ${err.message}`);
+      console.error(`❌ Error for ID ${id}: ${error.message}`);
       if (retries > 0) {
         console.log(`🔁 Retrying ID ${id}, attempts left: ${retries}`);
-        await new Promise(res => setTimeout(res, 5000));
+        await new Promise((res) => setTimeout(res, 5000));
       } else {
         console.log(`⛔ Skipped ID ${id} after 3 retries`);
       }
@@ -83,6 +75,8 @@ async function fetchPageData(page, id, pageNumber, index, total) {
 }
 
 async function fetchData() {
+  const totalPages = 140;
+
   const browser = await puppeteer.launch({
     headless: "new",
     executablePath: "/usr/bin/chromium-browser",
@@ -92,41 +86,38 @@ async function fetchData() {
   const page = await browser.newPage();
 
   try {
-    const totalPages = 140;
-
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
-      let attempts = 3;
-      while (attempts > 0) {
-        try {
-          const res = await axios.get(`https://hent.shoko.fun/api/hen-all?page=${pageNumber}`);
-          console.log(`📄 Fetched page ${pageNumber}, status ${res.status}`);
+      console.log(`📄 Processing page ${pageNumber}/${totalPages}`);
+      let tries = 3;
 
-          const items = res.data.results?.data?.all || [];
-          if (!Array.isArray(items)) throw new Error("Response data is not an array");
+      while (tries > 0) {
+        try {
+          const response = await axios.get(`https://hent.shoko.fun/api/hen-all?page=${pageNumber}`);
+          const items = response.data.results?.data?.all || [];
 
           for (let i = 0; i < items.length; i++) {
-            await fetchPageData(page, items[i].id, pageNumber, i, items.length);
+            const item = items[i];
+            await fetchPageData(page, item.id, pageNumber, i, items.length);
           }
 
-          await new Promise(r => setTimeout(r, 3000));
+          await new Promise((res) => setTimeout(res, 2000));
           break;
-        } catch (pageErr) {
-          attempts--;
-          console.error(`⚠️ Error page ${pageNumber}: ${pageErr.message}`);
-          if (attempts > 0) {
-            console.log(`🔁 Retrying page ${pageNumber}, attempts left: ${attempts}`);
-            await new Promise(r => setTimeout(r, 5000));
+        } catch (error) {
+          console.error(`⚠️ Error fetching page ${pageNumber}: ${error.message}`);
+          tries--;
+          if (tries > 0) {
+            console.log(`🔁 Retrying page ${pageNumber}, attempts left: ${tries}`);
+            await new Promise((res) => setTimeout(res, 5000));
           } else {
-            console.log(`⛔ Failed page ${pageNumber} after retries`);
+            console.log(`⛔ Skipped page ${pageNumber} after 3 retries`);
           }
         }
       }
     }
-  } catch (fatal) {
-    console.error("🚨 Fatal error in fetchData:", fatal.message);
+  } catch (e) {
+    console.error("🚨 Fatal error:", e.message);
   } finally {
     await browser.close();
-    console.log("🧹 Browser closed");
   }
 }
 
