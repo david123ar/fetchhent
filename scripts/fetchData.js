@@ -2,9 +2,8 @@ const puppeteer = require("puppeteer");
 const axios = require("axios");
 const { addOrUpdateDocument, getDocument } = require("../src/services/dataService");
 
-async function fetchPageData(browser, id, pageNumber, index, total) {
+async function fetchPageData(page, id, pageNumber, index, total) {
   let retries = 3;
-  let page;
 
   while (retries > 0) {
     try {
@@ -16,8 +15,7 @@ async function fetchPageData(browser, id, pageNumber, index, total) {
 
       console.log(`🔢 Processing ID ${index + 1}/${total} on page ${pageNumber} → ${id}`);
 
-      await new Promise((res) => setTimeout(res, 1000)); // Throttle
-      page = await browser.newPage();
+      await page.waitForTimeout(1000); // help prevent "main frame too early"
       await page.goto(`https://hentai.tv/hentai${id}`, {
         waitUntil: "networkidle2",
         timeout: 180000,
@@ -54,7 +52,7 @@ async function fetchPageData(browser, id, pageNumber, index, total) {
             alternateTitle: document.querySelector("#aawp .flex-1 .container .flex aside:last-child div h2 span")?.innerText.trim() || "",
           },
           moreInfo: {
-            tags: Array.from(document.querySelectorAll("#aawp .flex-1 .container .rounded .btn")).map((el) => el.innerText.trim()),
+            tags: Array.from(document.querySelectorAll("#aawp .flex-1 .container .rounded .btn")).map(el => el.innerText.trim()),
             descripOne: document.querySelector("#aawp .flex-1 .container .rounded .prose p:first-child")?.innerText.trim() || "",
             descripTwo: document.querySelector("#aawp .flex-1 .container .rounded .prose p:last-child")?.innerText.trim() || "",
           },
@@ -69,12 +67,10 @@ async function fetchPageData(browser, id, pageNumber, index, total) {
       console.error(`❌ Error for ID ${id}: ${error.message}`);
       if (retries > 0) {
         console.log(`🔁 Retrying ID ${id}, attempts left: ${retries}`);
-        await new Promise((res) => setTimeout(res, 5000));
+        await new Promise(res => setTimeout(res, 5000));
       } else {
         console.log(`⛔ Skipped ID ${id} after 3 retries`);
       }
-    } finally {
-      if (page) await page.close();
     }
   }
 }
@@ -85,9 +81,15 @@ async function fetchData() {
   const browser = await puppeteer.launch({
     headless: "new",
     executablePath: "/usr/bin/chromium-browser",
-    protocolTimeout: 180000, // ✅ Prevent "Target.createTarget timed out"
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+    timeout: 180000,
   });
+
+  const page = await browser.newPage();
 
   try {
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
@@ -100,17 +102,17 @@ async function fetchData() {
           const items = response.data.results?.data?.all || [];
 
           for (let i = 0; i < items.length; i++) {
-            await fetchPageData(browser, items[i].id, pageNumber, i, items.length);
+            await fetchPageData(page, items[i].id, pageNumber, i, items.length);
           }
 
-          await new Promise((res) => setTimeout(res, 2000));
+          await new Promise(res => setTimeout(res, 2000));
           break;
         } catch (error) {
           console.error(`⚠️ Error fetching page ${pageNumber}: ${error.message}`);
           tries--;
           if (tries > 0) {
             console.log(`🔁 Retrying page ${pageNumber}, attempts left: ${tries}`);
-            await new Promise((res) => setTimeout(res, 5000));
+            await new Promise(res => setTimeout(res, 5000));
           } else {
             console.log(`⛔ Skipped page ${pageNumber} after 3 retries`);
           }
@@ -120,7 +122,8 @@ async function fetchData() {
   } catch (e) {
     console.error("🚨 Fatal error:", e.message);
   } finally {
-    await browser.close();
+    await page.close().catch(() => {});
+    await browser.close().catch(() => {});
   }
 }
 
