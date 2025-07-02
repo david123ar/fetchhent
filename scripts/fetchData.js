@@ -2,7 +2,7 @@ const puppeteer = require("puppeteer");
 const axios = require("axios");
 const { addOrUpdateDocument, getDocument } = require("../src/services/dataService");
 
-async function fetchPageData(page, id, pageNumber, index, total) {
+async function fetchPageData(browser, id, pageNumber, index, total) {
   let retries = 3;
   while (retries > 0) {
     try {
@@ -13,13 +13,28 @@ async function fetchPageData(page, id, pageNumber, index, total) {
       }
 
       console.log(`🔢 Processing ID ${index + 1}/${total} on page ${pageNumber} → ${id}`);
+      await new Promise((r) => setTimeout(r, 1000)); // small delay before launching page
 
-      await page.waitForTimeout(500); // Prevent "main frame too early"
-      await page.goto(`https://hentai.tv/hentai${id}`, {
-        waitUntil: "networkidle2",
-        timeout: 180000,
-      });
+      const page = await browser.newPage();
 
+      // Retry navigation separately
+      let navRetries = 2;
+      while (navRetries > 0) {
+        try {
+          await page.goto(`https://hentai.tv/hentai${id}`, {
+            waitUntil: "networkidle2",
+            timeout: 180000,
+          });
+          break; // success
+        } catch (err) {
+          navRetries--;
+          console.log(`🚫 Retry page.goto for ID ${id}, left: ${navRetries}`);
+          if (navRetries === 0) throw err;
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+
+      // Try clicking ad
       try {
         const adBtn = await page.$("#aawp .flex-1 .container button");
         if (adBtn) {
@@ -60,6 +75,8 @@ async function fetchPageData(page, id, pageNumber, index, total) {
 
       await addOrUpdateDocument("hentai", id, data);
       console.log(`✅ Data updated for ID ${id}`);
+
+      await page.close(); // close the page after processing
       return;
     } catch (error) {
       retries--;
@@ -83,8 +100,6 @@ async function fetchData() {
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
 
-  const page = await browser.newPage();
-
   try {
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       console.log(`📄 Processing page ${pageNumber}/${totalPages}`);
@@ -97,7 +112,7 @@ async function fetchData() {
 
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            await fetchPageData(page, item.id, pageNumber, i, items.length);
+            await fetchPageData(browser, item.id, pageNumber, i, items.length);
           }
 
           await new Promise((res) => setTimeout(res, 2000));
