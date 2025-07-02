@@ -1,4 +1,5 @@
-const puppeteer = require("puppeteer"); // use "puppeteer-core" with executablePath if needed
+require("dotenv").config();
+const puppeteer = require("puppeteer-core");
 const axios = require("axios");
 const { addOrUpdateDocument, getDocument } = require("../src/services/dataService");
 
@@ -77,13 +78,13 @@ async function fetchData() {
 
   const browser = await puppeteer.launch({
     headless: "new",
+    executablePath: "/usr/bin/chromium-browser",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
     ],
     protocolTimeout: 180000,
-    // executablePath: "/usr/bin/chromium-browser", // Uncomment if using puppeteer-core
   });
 
   const page = await browser.newPage();
@@ -105,7 +106,7 @@ async function fetchData() {
             await fetchPageData(page, item.id);
           }
 
-          await new Promise((res) => setTimeout(res, 2000)); // 2s delay between pages
+          await new Promise((res) => setTimeout(res, 2000));
           break;
         } catch (error) {
           console.error(`⚠️ Error fetching page ${pageNumber}: ${error.message}`);
