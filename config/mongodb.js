@@ -2,7 +2,7 @@ const { MongoClient } = require("mongodb");
 require("dotenv").config();
 
 const uri =
-  "mongodb://root:Imperial_king2004@145.223.118.168:27017/?authSource=admin";
+  "mongodb://root:Imperial_king2004@31.97.122.33:27017/?authSource=admin";
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,

@@ -15,10 +15,11 @@ async function fetchPageData(page, id, pageNumber, index, total) {
 
       console.log(`🔢 Processing ID ${index + 1}/${total} on page ${pageNumber} → ${id}`);
 
-      await page.waitForTimeout(1000); // help prevent "main frame too early"
+      await page.waitForTimeout(1000);
+
       await page.goto(`https://hentai.tv/hentai${id}`, {
         waitUntil: "networkidle2",
-        timeout: 180000,
+        timeout: 0, // no timeout
       });
 
       try {
@@ -38,17 +39,17 @@ async function fetchPageData(page, id, pageNumber, index, total) {
 
       const data = await page.evaluate(() => {
         return {
-          url: document.querySelector("#aawp iframe")?.src || "",
+          url: document.querySelector("#aawp .aspect-video iframe")?.src || "",
           title: document.querySelector("#aawp .flex-1 .container .border-b h1")?.innerText.trim() || "",
           views: document.querySelector("#aawp .flex-1 .container .grid .border-b p")?.innerText.trim() || "",
           poster: document.querySelector("#aawp .flex-1 .container .flex aside:first-child img")?.src || "",
           banner: document.querySelector("#aawp .aspect-video img")?.src || "",
           cencored: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:first-child a")?.innerText.trim() || "",
           info: {
-            brand: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(1) a")?.innerText.trim() || "",
-            brandUploads: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(2) span:last-child")?.innerText.trim() || "",
-            releasedDate: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(3) span:last-child")?.innerText.trim() || "",
-            uploadDate: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(4) span:last-child")?.innerText.trim() || "",
+            brand: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(2) a")?.innerText.trim() || "",
+            brandUploads: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(3) span:last-child")?.innerText.trim() || "",
+            releasedDate: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(4) span:last-child")?.innerText.trim() || "",
+            uploadDate: document.querySelector("#aawp .flex-1 .container .flex aside:last-child p:nth-child(5) span:last-child")?.innerText.trim() || "",
             alternateTitle: document.querySelector("#aawp .flex-1 .container .flex aside:last-child div h2 span")?.innerText.trim() || "",
           },
           moreInfo: {
@@ -62,6 +63,7 @@ async function fetchPageData(page, id, pageNumber, index, total) {
       await addOrUpdateDocument("hentai", id, data);
       console.log(`✅ Data updated for ID ${id}`);
       return;
+
     } catch (error) {
       retries--;
       console.error(`❌ Error for ID ${id}: ${error.message}`);
@@ -78,18 +80,16 @@ async function fetchPageData(page, id, pageNumber, index, total) {
 async function fetchData() {
   const totalPages = 140;
 
-  const browser = await puppeteer.launch({
-    headless: "new",
-    executablePath: "/usr/bin/chromium-browser",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-    timeout: 180000,
-  });
+const browser = await puppeteer.launch({
+  executablePath: '/usr/bin/chromium-browser',
+  headless: "new",
+  args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+});
+
 
   const page = await browser.newPage();
+  page.setDefaultNavigationTimeout(0);
+  page.setDefaultTimeout(0);
 
   try {
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
@@ -107,6 +107,7 @@ async function fetchData() {
 
           await new Promise(res => setTimeout(res, 2000));
           break;
+
         } catch (error) {
           console.error(`⚠️ Error fetching page ${pageNumber}: ${error.message}`);
           tries--;
@@ -126,5 +127,9 @@ async function fetchData() {
     await browser.close().catch(() => {});
   }
 }
+
+process.on("unhandledRejection", (reason) => {
+  console.log("🔴 Unhandled Rejection:", reason);
+});
 
 fetchData();
